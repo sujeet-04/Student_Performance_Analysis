@@ -1,0 +1,262 @@
+---
+title: "Student Performance Analysis"
+author: ""
+date: "March 31, 2021"
+output: html_document
+---
+                         Impact of home, socioeconomic and demographic factors on student grade
+                         
+Peoples are constantly affected by the environment and the variables from which they surround themselves, If that individual is in the early stage of his life like under 25 then he is more prone to his environment. The same is applied to the student too, Every student's life is composed and stimulated by different features whether it is a low-income family, family traditions, their parent's education, community involvement, or race. Apart from these, there are other factors too like their social group on which they spend their free time, the support from parents, The activities on which they involve in their free time. So there are so many variables around which a student was surrounded and this environment impacts their behavior and ease of life, but do these things have any impact on the performance of their grades. This is a very important question that needs to be answered and Teachers need to understand that every student has been influenced by these demographic characteristics to be effective. So to answer these questions and analyze the impact of these attributes on the grades of the student I will use the student achievement dataset of two Portuguese schools. The dataset contains the grades scored by 395 students in the last three periods and also records different environmental factors on which these students belong like age, sex, school name, parent's education status, internet access to the student. Like these, there is 33 variable but I am not going to consider all these attributes because here I want to analyze is the parent's education background, family support, internet availability and other related factor affecting the student grades or not.      
+                               
+                         
+
+```{r library}
+#Load the requied libraries.
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(readr)
+library(ggcorrplot)
+library(lmtest)
+
+#library(devtools)
+#install.packages("remotes")
+#remotes::install_github("benmarwick/wordcountaddin")
+
+#devtools::install_github("benmarwick/wordcountaddin")
+```
+
+for analysis there are two dataset one dataset contains the grades for mathematics and the other one contains the grades for portuguese language. I will use Math's grade data here for my analysis.
+
+```{r Dataset}
+#load the datset.
+Math_perf <- read_csv("student-mat.csv")
+head(Math_perf) # To see the first 6 rows.
+str(Math_perf) # Structure of the dataset
+#Transform all the character variable into factor.
+Math_perf[sapply(Math_perf, is.character)] <- lapply(Math_perf[sapply(Math_perf, 
+                                                                         is.character)], as.factor)
+
+#Summary of the dataset.
+summary(Math_perf)
+#checking for NA Values.
+anyNA(Math_perf) #There is no NA values in the dataset.  
+
+```
+####  Summary of the Dataset   ####
+
+The dataset has 33 variables, I am not going to consider all the variables for my analysis, so I will explain those variables only which are part of my research question.
+
+* where G1, G2, G3 are the grades of the student's in the last three period exams, which values range from 0 to 20.
+* Here SCHOOLS UP and FAMSUP mean the is the student's got extra education support from the school and parent, it's binary yes or no. If I compare both the record more than 88 percent of students didn't get school support but in the case of family support the situation is the opposite most of the students got family support for education. 
+* MEDU, FEDU, MJOB, and FJOB contain the information about the mother and father's educational background and job description respectively.
+* PSTATUS is the parent cohabitation status, where T means living together and A means apart. For out of 395 student's in 354 cases parent's stay together but only 41 cases they were apart.
+* Address contains the type of area from where a student comes U for Urban and R for Rural.
+* FAMREAL means the quality of family relation of the child, 1 is very bad and 5 is very good.
+* Failures mean the number of past class failures, ranges from 0 to 3.
+* School contains the school name, is a categorical variable, Gp means Gabriel Pereira and MS means Mousinho da Silveira, most of the students belong to GP. Sex means gender F for female and M for male, sex ratio is almost the same.
+* study time is the time spend by each student weekly on their study.
+*
+
+I will use ggplot and plotly both for the visualization and tidyverse and dplyr for the data manipulation.  
+
+# Research Question 1: Are the school type and gender of the student have any relation with their grades.
+
+```{r}
+attach(Math_perf)
+
+plot_ly(Math_perf,x = ~school,y = ~G1,type = 'box',color = ~sex) %>% add_trace(y = ~G2,x = ~school,color = ~sex) %>% add_trace(y = ~G3,x = ~school,color = ~sex) %>% layout(boxmode = "group",title = "Grades of student's in last 3 exams differentiated based on their school and sex",yaxis = list(title ="Marks scored in 3 exams"),xaxis = list(title = "Sex and school of student"))
+
+```
+
+Answer: Here the first six boxplots refer to GP school while the last 6 for MS. In GP the first two boxplots are for female and male respectively for the first exam, the next two for the second-period exam, and the last two for the third-period exam, same in the case of MS too. I use this graph to plot the bivariate analysis between the variable so that from the same plot I can get the relation of school and gender between grades.   The result of both the school is almost the same in the first exam but it starts improving for GP for next two period but there is no change in performance in cases of MS. In the case of GP school, male candidates perform better than females in all three exams while in the case of MS school the performance of female students is better than male students. So after analyzing these details I can say that yes there is some evidence that student grade depends upon the school and gender, overall GP performs better than MS, but the girls of GP perform low compare to girls of MS. 
+
+
+# Research Question 2: Is the Area pf the student from where they belong affecting there marks.
+
+
+```{r}
+plot_ly(Math_perf,x = ~address,y = ~G1,type = 'violin',color = I('red')) %>% add_trace(y = ~G2,x = ~address,color = I('pink')) %>% add_trace(y = ~G3,x = ~address,color = I('green'))  %>%layout(violinmode = "group",title = "Grades of student's in last 3 exams differentiated based on their Address",yaxis = list(title ="Marks scored in 3 exams"),xaxis = list(title = "Type of address urban(U) or Rural(R)"))
+
+```
+
+Answer : This is the example of a violin graph, the graph narrows when the count of the variable is less and got wider when the count is maximum. I can see that in both the case the graph got wider between 10 to 12, which means that most of the students perform in this range. so I can say that there is no much difference between the different areas, so the grade of the student does not depend upon the type of area.   
+
+For further analysis I will do some feature engineering on my dataset, instead of comparing grades of each exam, I will build columns one is for total where I will average out the grades of all three exams, and next, I will add one more column perf where I will categorize the marks into three categories poor, Average and Good, Poor will be assigned to the student's whose average grades on last three exams were less than 9, Average for grades between 9 to 15 and good for grades more than 15.    
+
+
+```{r}
+#Build a column Total for the average grade and will round it to zero so that the deccimal point's will be removed. 
+Math_perf$total <- round((G1+G2+G3)/3)
+
+#build a column for perf 
+Math_perf$perf <- 0 #first assign zero to the columns.
+Math_perf$perf[Math_perf$total<9] <- "Poor"
+Math_perf$perf[Math_perf$total>8 & Math_perf$total <16 ] <- "Average"
+Math_perf$perf[Math_perf$total>15] <- "Good"
+attach(Math_perf)
+```
+
+# Research Question 3: Relation between absence and internet availaibility between student performance.
+
+```{r}
+table(perf)
+
+#Suumarize the absence of each student basesd on the performance.
+Math_perf %>% group_by(perf) %>% summarise(round(mean(absences),2))
+
+#Proportion table for performance and internet.
+round(prop.table(table(internet,perf),1),2)
+
+### chi Square Test
+
+# H0 = internet availability is independent of performance.
+# H1 = internet availability is dependent on performance.
+
+chisq.test(table(internet,perf))
+
+#p value is 0.4225 > 0.05 so i have to accept null hypothesis and reject alternate hypothesis.
+#That means position is internet availability is independent of performance.
+
+```
+
+Answer: Here first I summarize the absences of an individual based on performance and take means of that, the reason behind considering the mean was that if there is variation in the count for performance like I saw earlier that the count of average performance is quite high compare to good and poor, so if I consider the sum of absence the sum would be higher in case of average performance and it will not give me the clear idea. Now from the summarized data, it's quite clear that the average absence of poor-performing students is 5 days while for the average student it's maxed and for god student it's minimum. The student who takes less leave performs better compared to those who take more leaves.
+                                             For the case of internet availability, I use the proportion table the reason again is to minimize the count issue, here I consider the bunch of students who has access to the internet as one group and the ones who don't have access to the internet as the second group. Next, I count each category value as 100 and then distributed it on the percentage that out of this 100 percent what is the percentage of good, average and bad performance. From the table, I can't say any difference between these two categories because the values were almost the same for both the case, so to get a more clear idea about it I will use chi-square test, where my confidence interval is 5 percent, and my null hypothesis is internet availability is independent on performance and alternate hypothesis is internet availability is dependent on performance. My p-value is greater than 0.05 so I have to reject an alternate hypothesis, so the internet is independent of performance. From this I can also assume that the internet doesn't have any impact on student grade, maybe most of the students were not using the internet for the study purpose.
+
+
+#Research Question 4: Relation between failures and family relation.
+
+```{r}
+table(famrel,perf)
+### chi Square Test
+
+# H0 = Family relationshiop is independent of student performance.
+# H1 = Family relationshiop is dependent on student performance.
+
+chisq.test(table(famrel,perf))
+
+#p value is 0.9132 > 0.05 so i have to accept null hypothesis and reject alternate hypothesis.
+
+table(Pstatus,failures)
+
+ggplot(Math_perf, aes(x = as.factor(failures),fill = as.factor(Pstatus))) + 
+  geom_bar(position = "dodge") + ggtitle("Comparison of parent staus by considering failure as a factor ")
+```                                             
+                                             
+Answer: To analyze this I will consider two factors first is the parent status and the second is family relation because I want to analyze if the student's facing some issue in their family, is that have any impact on their performance. For that first, I compare the relationship variable with the performance but due to too much variance in count I can't make any prediction because as a proportion all look same, so for that, I decided to do chi-square test again to check if these two variables were dependent or not, the result I got is that there is less than 10 percent chance that these variables were dependent on each other because my p-value is 0.91 .so the mean is same for all the group present in the attributes.                                            Next is by analyzing the present status of the parent relationship, if the parents of the student were live apart is responsible for their children decrease in performance. To explain which I use categorical barplot and again divide this plot based on failure. Here I can see in all the cases either the student failed 3 times or didn't fail ever the proportion of parent status of living together and apart were similar, so I can't say that the relation of the parent's within themselves and between child affecting their performance.
+
+
+
+## Research Question 5 : Impact of studytime, support from school and family in education on student performance.
+
+```{r}
+
+ggplot(Math_perf, aes(y = studytime,x  = perf,fill = perf)) +
+  geom_boxplot() + ggtitle("Comparison of performance based on studytime ")
+
+
+```
+
+Answer : To understand the impact I plot study time in comparison of performance using boxplot. Here middle line shows the mean values, and the mean value for all the performance is the same. the count of students studying between 5 to 10 hours is more for good performance compare to average and poor performance. which states that there are few instances where the student spends more time on study score more marks, and also I can see the area of boxplot for poor performance student is below the mean line means most of the student spend very less time so they perform poorly. So there is some difference in individual performance based on study time but if I take on the whole population the result is the same.
+
+```{r}
+
+plot_ly(Math_perf,y = ~schoolsup,x = ~perf,type = 'violin',color = 'schoolsup',side = 'positive',orientation = 'h') %>% add_trace(y = ~famsup,color = 'famsup') %>% layout(violinmode = "group")
+
+round(prop.table(table(schoolsup,perf),1),2)
+
+round(prop.table(table(famsup,perf),1),2)
+
+```
+
+
+The support of family and school is always appreciated for the success of the student because the student feels motivated if they got support from their surroundings, is this motivation work in improving the grades of the student, to answer this I will analyze the relationship between these factors. Here I plot the area graph to see the concentration of the student based on their performance. The interpretation of the graph is very simple whenever the area got wider the number of students is more, here in the case of family support I can see when the student got support in education from the family there performance improved compared to the situation where they got support from the school. So the support from school doesn't have much impact on the student grade but the family support improves their performance because I can see the poor performance are got narrower in the case of family support compare to support from the school. 
+
+#Research Question 6 : Impact of parent's job and Education background on student grades,
+ 
+```{r}
+
+Math_perf$Medu[Math_perf$Medu == 0] <- 'None'
+Math_perf$Medu[Math_perf$Medu == 1] <- '4th Grade'
+Math_perf$Medu[Math_perf$Medu == 2] <- '5th to 9th Grade' 
+Math_perf$Medu[Math_perf$Medu == 3] <- 'Secondary Education'
+Math_perf$Medu[Math_perf$Medu == 4] <- 'Higher Education'
+
+
+plot_ly(Math_perf, y = ~total, x = ~Mjob, type = "box",color =I('red')) %>% add_trace(x = ~Medu,color = I("pink")) %>% layout(boxmode = "group",title = "Impact of Mother job and education background on student grade",yaxis = list(title ="Average garde on last three exam"),xaxis = list(title = "Job and Education background category"))
+
+
+Math_perf$Fedu[Math_perf$Fedu == 0] <- 'None'
+Math_perf$Fedu[Math_perf$Fedu == 1] <- '4th Grade'
+Math_perf$Fedu[Math_perf$Fedu == 2] <- '5th to 9th Grade' 
+Math_perf$Fedu[Math_perf$Fedu == 3] <- 'Secondary Education'
+Math_perf$Fedu[Math_perf$Fedu == 4] <- 'Higher Education'
+
+plot_ly(Math_perf, y = ~total, x = ~Fjob, type = "box",color =I('blue')) %>% add_trace(x = ~Fedu,color = I("orange")) %>% layout(boxmode = "group",title = "Impact of father job and education background on student grade",yaxis = list(title ="Average garde on last three exam"),xaxis = list(title = "Job and Education background category"))
+
+```
+
+Answer : It is no secret that parents are the primary influence in their children???s lives, guiding what they eat, where they live, and even what they wear. But parents influence their children in a far more important way, According to the research published by Lamar University, Texas, USA parents??? education level has a significant impact on their children???s success. so to see the impact on grade here I will consider both the education and job background as my factor. Before analysis here I transform the education column from numeric to factor for better understanding.
+                                   In case of mother I can see the grades of the student whose mother's have a higher degree is quite good compare to those have a low education background, the trend is upward, means the grades start increasing once the education level of the mother increases, Because it's lowest in case of a mother is only 4th-grade pass but highest in cases were mother attended higher education. Next is job If the mother is working in the field of health domain the grades of the student were higher on these conditions, while if I consider the situation where a mother is a homemaker or involve in another type of things the grades of the student were average.
+                          I can see the same type of trend in education background of father too, here also the student whose father attended higher degree perform farm better than others, so education background of both father and mother impact in a positive way on child performance. But if I consider a job background of the father as a factor, the student whose father is teacher perform better compare to another student, and irrespective of the case I saw in mother, here if the father stays at home or work in the field of medical the performance of the student is same.SO both father and mother job have their influence on student performance.       
+                                   
+
+Modeling : After analyzing differnt factor now i can do the modeling part, for that i will consider regression because it will create relation and  give me best fit equation if the target variable have good correlation between independent  variable. But before dive into that i will build one correlation matrix to see what is the correlation value do i have between these attributes.                                  
+```{r}
+# Compute a correlation matrix
+corr <- round(cor(Math_perf[,c(3,13:15,24:33)]), 1)
+head(corr)
+ggcorrplot(corr, hc.order = TRUE, type = "lower",lab = TRUE)
+
+```
+I can see here that the grades were dependent on each other which is obvious because the student who perform well in first period exam, definatley his/her next two periods grades were close to the first one,apart from this the grade have negative correlation between failure, which means if the student failed more than once in his/her previous session the grades were also decreasing, so the grades is inversly proportional to the failures here, apart from this there is no other factor which were dependent on the grades of the student. 
+
+```{r}
+#Regression model 1
+model_1 <- lm(G3 ~ G1 + G2 + failures + absences + Fedu + Fjob + Medu + Mjob + famsup + school + 
+                sex + studytime,data = Math_perf)
+
+summary(model_1)
+model_1 %>%  plot(which = 2)
+
+```
+
+
+```{r}
+#Regression model 2
+model_2 <- lm(G3 ~ G1 + G2 +log(failures+1) + absences,  data = Math_perf)
+
+summary(model_2)
+model_2 %>%  plot(which = 2)
+
+
+```
+
+
+```{r}
+#Regression Model 3
+model_3 <- lm( total ~ failures +log(absences + 1) + sex +  studytime  ,data = Math_perf)
+
+summary(model_3)
+model_3 %>% plot(which = 2)
+```
+
+#Result Discussion:
+       Here first I try to build my model by considering all the attributes on which I did the EDA and those who have good correlation value with the dependent variable, but in the first model, the p values are not acceptable for education, job, school, and sex. The reason behind it may be there are only one or two factors that are having a dependency on the target variable, which I saw at the time of EDA that the grades were almost the same if the father's job was healthy or he stays at home. So in the next model, I decided to remove these attributes, and consider only grades of the first two periods, failure and absence, Now all my p values are less the 0.05, and also my R-Squared value is 0.83 which is quite good.
+
+Limitation: Now as I got the good R-Squared value, is this model efficient, because my task was to analyze the impact of social and other factor's on student grades, but the high R-squared value I got was due to the Grades were correlated. so to analyze the impact I build another model by considering total as my target variable and here didn't consider the grades, here my independent variable is only the failure, study time, absence, and sex. The p-value is significant here for all the variables but the RSquared and Adjusted R-squared is not good, the reason behind this is these variable are impacting my target variable but the dependency is very less, which means I can say that yes absence rate, study time, failures are dependent on the performance but the dependency ratio is less.   
+
+
+                                      # Conclusion #
+
+After analyzing the different attributes present in the dataset I can say that Socioeconomic factors play a significant role in the achievement of high-graders in the mathematics examination. The results of my study suggest that socioeconomic background is a major predictor of a student's grade, either it is a parent's education, job, or support in the education by parents. Parent involvement is also effective in predicting math achievement, but demographic factor doesn't add much value to the performance of the student because I saw either the student belongs to a rural or urban area their average performance is almost the same. The results of my study also suggested that economic variables and attitudinal factors significantly impacted each of the student grades in the last three math exams. 
+                                             In the end, as I saw the impact of these variables is not that effective in regression, so I want to suggest to Researchers that for better analysis they should consider a larger population next time, and the result should not be focused on one subject. And if they want to consider only mathematics as a subject then they should include teachers??? attitudes toward mathematics in addition to the attitudes of students and parents. The lack of a strong correlation between parent involvement and student achievement may increase if teachers??? attitudes were considered. Researchers can conduct replication studies by expanding the population to additional grade levels, rather than at one grade level, to provide more in-depth results.  Another idea for a replication study would be to examine predictors of student achievement rather than math achievement or to conduct a study at the primary, middle, or high school level to examine predictors of math achievement.
+
+
+#References
+
+* https://archive.ics.uci.edu/ml/datasets/student+performance
+* Sievert, Carson. 2018b. ???Learning from and Improving Upon Ggplotly Conversions.??? Blog. https://blog.cpsievert.me/2018/01/30/learning-improving-ggplotly-geom-sf/.
+* https://plot.ly/r/
+* OriginLab webpage, http://www.originlab.com/doc/Origin-Help/LR-Algorithm. Retrieved February 9, 2016.
